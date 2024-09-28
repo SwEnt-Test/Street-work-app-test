@@ -57,6 +57,10 @@ jobs:
             ~/.android/adb*
           key: avd-34
 
+      - name: Create AVD directory
+        run: |
+            mkdir -p ~/.android/avd/
+
       - name: create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
@@ -64,11 +68,14 @@ jobs:
           api-level: 34
           target: google_apis
           arch: x86_64
-          force-avd-creation: false
+          force-avd-creation: true
           emulator-build: 7425822
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: false
           script: echo "Generated AVD snapshot for caching."
+
+      - name: Verify Emulator Running
+        run: adb devices
 
       - name: Grant execute permission for gradlew
         run: |
