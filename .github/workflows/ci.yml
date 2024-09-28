@@ -100,4 +100,29 @@ jobs:
         run: ./gradlew check --parallel --build-cache
 
       # Run connected tests on the emulator
-      - nam
+      - name: Run connected tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          emulator-boot-timeout: 1200
+          script: ./gradlew connectedCheck --parallel --build-cache
+
+      # Log adb emulator output for debugging
+      - name: Log emulator output
+        run: adb -s emulator-5554 logcat -d
+
+      # Generate the coverage report
+      - name: Generate Coverage Report
+        run: ./gradlew jacocoTestReport
+
+      # Upload the various reports to SonarCloud
+      - name: Upload report to SonarCloud
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./gradlew sonar --parallel --build-cache
