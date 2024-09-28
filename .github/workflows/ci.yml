@@ -15,35 +15,27 @@ on:
 jobs:
   ci:
     name: CI
-    # Execute the CI on the course's runners
     runs-on: ubuntu-latest
 
     steps:
-      # First step : Checkout the repository on the runner
+      # First step: Checkout the repository on the runner
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis (if we use Sonar Later)
+          fetch-depth: 0
 
-
-      # Kernel-based Virtual Machine (KVM) is an open source virtualization technology built into Linux. Enabling it allows the Android emulator to run faster.
-      - name: Enable KVM group perms
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
+      # Setup Java JDK 17
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
-      # Caching is a very useful part of a CI, as a workflow is executed in a clean environment every time,
-      # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
-      #
-      # To avoid that, we cache the the gradle folder to reuse it later.
+      # Enable KVM (this step may be unnecessary in CI environments without access to KVM)
+      # Removed KVM permission steps for now
+
+      # Gradle caching
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v3
 
@@ -59,9 +51,14 @@ jobs:
 
       - name: Create AVD directory
         run: |
-            mkdir -p ~/.android/avd/
+          mkdir -p ~/.android/avd/
 
-      - name: create AVD and generate snapshot for caching
+      # Update Android SDK and Emulator
+      - name: Update SDK and Emulator
+        run: sdkmanager --update
+
+      # Create AVD and generate snapshot for caching
+      - name: Create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -69,14 +66,15 @@ jobs:
           target: google_apis
           arch: x86_64
           force-avd-creation: true
-          emulator-build: 7425822
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-accel
           disable-animations: false
+          emulator-boot-timeout: 1200
           script: echo "Generated AVD snapshot for caching."
 
       - name: Verify Emulator Running
         run: adb devices
 
+      # Grant execute permission for gradlew
       - name: Grant execute permission for gradlew
         run: |
           chmod +x ./gradlew
@@ -86,36 +84,39 @@ jobs:
         run: |
           ./gradlew ktfmtCheck
 
-      # This step runs gradle commands to build the application
+      # Assemble the project
       - name: Assemble
         run: |
-          # To run the CI with debug information, add --info
           ./gradlew assemble lint --parallel --build-cache
 
       # Run Unit tests
       - name: Run tests
         run: |
-          # To run the CI with debug information, add --info
           ./gradlew check --parallel --build-cache
 
       # Run connected tests on the emulator
-      - name: run tests
+      - name: Run connected tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
           target: google_apis
           arch: x86_64
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-accel
           disable-animations: true
+          emulator-boot-timeout: 1200
           script: ./gradlew connectedCheck --parallel --build-cache
 
-      # This step generates the coverage report which will be uploaded to sonar
+      # Log emulator output for debugging
+      - name: Log emulator output
+        run: cat $ANDROID_HOME/emulator/log/emulator0.log
+
+      # Generate the coverage report
       - name: Generate Coverage Report
         run: |
           ./gradlew jacocoTestReport
 
-      # Upload the various reports to sonar
+      # Upload the various reports to SonarCloud
       - name: Upload report to SonarCloud
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
