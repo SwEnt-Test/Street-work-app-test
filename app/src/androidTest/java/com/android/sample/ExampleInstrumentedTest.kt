@@ -26,7 +26,7 @@ class MainActivityTest : TestCase() {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
         simpleText {
           assertIsDisplayed()
-          assertTextEquals("Hello buddy!")
+          assertTextEquals("Hello buddy 2!")
         }
       }
     }
